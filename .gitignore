@@ -1,8 +1,9 @@
 # EasyRPG
 assets/easyrpg-player.elf
 
-# Games
+# Games and CIAs
 games/**
+out/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
