@@ -1,0 +1,5 @@
+[submodule "EasyRPG-Player"]
+	path = EasyRPG-Player
+	url = https://github.com/EasyRPG/Player
+	branch = master
+	ignore = dirty
