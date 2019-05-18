@@ -38,6 +38,8 @@ To have the script find all dependencies automatically, without having to pass t
 * `assets/RTP2000` - RPG Maker 2000 RTP
 * `assets/RTP2003` - RPG Maker 2003 RTP
 
+CIA files will end up in `out/` and temp files will be written to `tmp/` and removed after the build finishes.
+
 ### Preparing assets
 
 In order to build games for 3DS we'll need an **icon**, **banner** and **audio** file. These should be placed in a folder called `3DS` in the game's files. Additionally we need a **metadata** file named `info.cfg` which contains the title, author and a unique CIA ID.
