@@ -29,7 +29,7 @@ def make_cia_file(id, title, author, release_date, game_path, name, safe_name, b
   if result.returncode != 0: return False
   result = subprocess.run(['makerom', '-f', 'cia', '-o', out + '/' + safe_name + '.cia', '-elf', elf, '-rsf', tmp + '/spec.rsf', '-icon', tmp + '/icon.bin', '-banner', tmp + '/banner.bin', '-exefslogo', '-target', 't', '-romfs', tmp + '/romfs.bin'], capture_output=True)
   if result.returncode != 0: return False
-  
+
   return {
     'success': success,
     'id': id,
@@ -50,7 +50,7 @@ def clean_up_tmp_files(tmp_dir):
     os.remove(file)
 
 
-def build_cia(base, game_path, game_name, elf_path, rtp_dir, spec_path, out_dir, tmp_dir, default_crcs, game_dir=None):
+def build_cia(base, game_path, game_name, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, default_crcs, game_dir=None):
   '''
   Prepares to build a CIA file by assembling all the information needed.
   '''
@@ -59,6 +59,17 @@ def build_cia(base, game_path, game_name, elf_path, rtp_dir, spec_path, out_dir,
   target = '{}/{}.cia'.format(out_dir, safe_name)
   rel_path = rel_dir(game_path, game_dir)
   rel_target = rel_dir(target, out_dir)
+  rm_version = 2000
+
+  # Check if we have the necessary RTP version.
+  if not rtp_dirs.get(rm_version) and not no_rtp:
+    report_no_rtp_for_game(rm_version, game_path, game_dir)
+    return {
+      'success': False,
+      'skip': True,
+      'dir': rel_path,
+      'target': rel_target
+    }
 
   info = get_config(assets_path + 'info.cfg')['metadata']
 
@@ -79,7 +90,7 @@ def build_cia(base, game_path, game_name, elf_path, rtp_dir, spec_path, out_dir,
     report_default_assets(game_path, game_dir, default_items)
   if 'info' in default_items:
     success = False
-  
+
   if success:
     try:
       game = make_cia_file(
@@ -118,24 +129,27 @@ def main():
   '''
   parser = argparse.ArgumentParser(description='Script for generating 3DS CIA files from RPG Maker 2000 games using EasyRPG. See readme.md for setting up the build requirements. Only the source directory needs to be specified; defaults will be used for everything else.')
 
-  parser.add_argument('dir', type=str, help='source directory containing an RM2K(3) game, or multiple games')
+  parser.add_argument('dir', type=str, help='source dir containing an RM2K(3) game, or multiple games')
   parser.add_argument('--elf', type=str, help='path to an EasyRPG ELF file', default='./assets/easyrpg-player.elf')
-  parser.add_argument('--spec', type=str, help='path to a ROM spec file (will have a new unique ID inserted)', default='./assets/spec.rsf')
-  #parser.add_argument('--rtp', type=str, help='path to an RTP', default='./assets/rtp')
-  parser.add_argument('--out', type=str, help='CIA file output directory', default='./out')
+  parser.add_argument('--spec', type=str, help='path to a ROM spec file (will get a new unique ID)', default='./assets/spec.rsf')
+  parser.add_argument('--rtp2k', type=str, help='path to the RPG Maker 2000 RTP', default='./assets/RTP2000')
+  parser.add_argument('--rtp2k3', type=str, help='path to the RPG Maker 2003 RTP', default='./assets/RTP2003')
+  parser.add_argument('--no-rtp', action='store_true', help='don\'t copy RTP files when packaging', default=False)
+  parser.add_argument('--out', type=str, help='CIA file output dir', default='./out')
   args = parser.parse_args()
   base = os.path.abspath(os.path.dirname(sys.argv[0]))
   tmp_dir = base + '/tmp'
 
+  rtp = check_rtp(args.rtp2k, args.rtp2k3)
   check_rsf_template(args.spec)
   check_prerequisites()
   check_easyrpg_elf(args.elf)
 
-  build_dir(base, args.dir, args.elf, None, args.spec, args.out, tmp_dir)
+  build_dir(base, args.dir, args.elf, rtp, args.no_rtp, args.spec, args.out, tmp_dir)
   sys.exit(0)
 
 
-def build(base, item, game_dir, elf_path, rtp_dir, spec_path, out_dir, tmp_dir, report_dir=False):
+def build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, report_dir=False):
   '''
   Builds a single game.
   '''
@@ -163,14 +177,16 @@ def build(base, item, game_dir, elf_path, rtp_dir, spec_path, out_dir, tmp_dir, 
     return
   if not check_3ds_info(game_path, game_dir):
     return
-  result = build_cia(base, game_path, item, elf_path, rtp_dir, spec_path, out_dir, tmp_dir, defaults, game_dir)
+  result = build_cia(base, game_path, item, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, defaults, game_dir)
   if not result['success']:
+    if result.get('skip'):
+      return result
     report_build_failed(game_path, game_dir)
   else:
     report_build_succeeded(result)
   return result
 
-def build_dir(base, game_dir, elf_path, rtp_dir, spec_path, out_dir, tmp_dir):
+def build_dir(base, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir):
   '''
   Builds either a single game or multiple games.
   '''
@@ -178,18 +194,18 @@ def build_dir(base, game_dir, elf_path, rtp_dir, spec_path, out_dir, tmp_dir):
   if is_game(game_dir):
     bits = os.path.split(game_dir)
     item = bits[1]
-    result = build(base, item, game_dir, elf_path, rtp_dir, spec_path, out_dir, tmp_dir, True)
+    result = build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, True)
     if result and result['success']:
       return
     else:
       sys.exit(1)
-  
+
   count = 0
   for item in os.listdir(game_dir):
-    result = build(base, item, game_dir, elf_path, rtp_dir, spec_path, out_dir, tmp_dir, False)
+    result = build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, False)
     if result and result['success']:
       count += 1
-  
+
   report_builds_done(count)
 
 
@@ -255,8 +271,20 @@ def check_3ds_info(dir, game_dir):
   if not (valid_id_length and valid_id and valid_title and valid_author):
     report_no_info(dir, game_dir, valid_id_length, valid_id, valid_title, valid_author)
     return False
-  
+
   return True
+
+
+def check_rtp(rtp2k, rtp2k3):
+  has_2k = os.path.isdir(rtp2k)
+  has_2k3 = os.path.isdir(rtp2k3)
+  missing = [item for item in ['RTP2000' if not has_2k else '', 'RTP2003' if not has_2k3 else ''] if item]
+  if missing:
+    _report_warning('could not find RTP: {}'.format(', '.join(missing)))
+  rtp = {}
+  if has_2k: rtp[2000] = os.path.abspath(rtp2k)
+  if has_2k3: rtp[2003] = os.path.abspath(rtp2k3)
+  return rtp
 
 
 def check_rsf_template(spec_file):
@@ -304,6 +332,9 @@ def report_not_a_dir(game_path, game_dir=None):
 def report_not_a_game(game_path, game_dir=None):
   _report_warning('not a game (no RPG_RT.ini found): {}'.format(rel_dir(game_path, game_dir)))
 
+def report_no_rtp_for_game(rtp, game_path, game_dir=None):
+  _report_warning('game needs the RPG Maker {} RTP which we don\'t have (skipping): {}'.format(rtp, rel_dir(game_path, game_dir)))
+
 def report_no_assets(game_path, game_dir=None, audio=False, banner=False, icon=False, info=False):
   dir = rel_dir(game_path, game_dir)
   missing = [
@@ -314,7 +345,8 @@ def report_no_assets(game_path, game_dir=None, audio=False, banner=False, icon=F
   ]
   missing = [a for a in missing if a]
   if len(missing) == 4:
-    _report_warning('no 3DS assets found (see readme.md): {}'.format(path))
+    _report_warning('no 3DS assets found (skipping): {}'.format(dir))
+    return
   _report_warning('3DS assets directory is missing files: {}: {}'.format(', '.join(missing), dir))
 
 def report_no_info(game_path, game_dir=None, valid_id_length=None, valid_id=None, valid_title=None, valid_author=None):
