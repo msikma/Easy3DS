@@ -6,10 +6,11 @@ The 3DS port of EasyRPG was made by Rinnegatamante in 2016 and has since become 
 
 To run this script, the following dependencies are needed:
 
-* [`bannertool`](https://github.com/Steveice10/bannertool/releases), [`3dstool`](https://github.com/dnasdw/3dstool/releases), [`makerom`](https://github.com/profi200/Project_CTR/releases)
-* the EasyRPG repository (as submodule)
+* [`bannertool`](https://github.com/Steveice10/bannertool/releases)
+* [`3dstool`](https://github.com/dnasdw/3dstool/releases)
+* [`makerom`](https://github.com/profi200/Project_CTR/releases)
 
-When cloning this repository, use `git clone --recurse-submodules -j8 URL` to get the EasyRPG submodule. If you already cloned this repository without submodules, run `git submodule update --init --recursive` to get it. This script has no Python dependencies other than the standard library.
+This script has no Python dependencies other than the standard library.
 
 ### Usage
 
