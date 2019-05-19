@@ -40,9 +40,15 @@ def make_cia_file(id, title, author, release_date, game_path, name, safe_name, b
   if result.returncode != 0: return report_cia_error(2, 'makesmdh', rel_dir)
   result = subprocess.run(['3dstool', '-cvtf', 'romfs', tmp + '/romfs.bin', '--romfs-dir', game_path], capture_output=True)
   if result.returncode != 0: return report_cia_error(3, '3dstool', rel_dir)
-  with open(tmp + '/spec.rsf', 'w') as fp:
-    result = subprocess.run(['gsed', '-r', r's/(UniqueId\s+:)\s*.*$/\1 0x$unique_id/g', spec], stdout=fp)
-  if result.returncode != 0: return report_cia_error(4, 'rsf', rel_dir)
+
+  try:
+    with open(spec, 'r') as fp:
+      spec_txt = fp.read()
+    with open(tmp + '/spec.rsf', 'w') as fp:
+      fp.write(spec_txt.replace('{{UNIQUE_ID}}', id))
+  except:
+    return report_cia_error(4, 'rsf', rel_dir)
+  
   result = subprocess.run(['makerom', '-f', 'cia', '-o', out + '/' + safe_name + '.cia', '-elf', elf, '-rsf', tmp + '/spec.rsf', '-icon', tmp + '/icon.bin', '-banner', tmp + '/banner.bin', '-exefslogo', '-target', 't', '-romfs', tmp + '/romfs.bin'], capture_output=True)
   if result.returncode != 0: return report_cia_error(5, 'makerom', rel_dir)
 
@@ -370,11 +376,10 @@ def check_easyrpg_elf(elf_file):
 def check_prerequisites():
   has_bannertool = bin_is_available('bannertool')
   has_3dstool = bin_is_available('3dstool')
-  has_sed = bin_is_available('sed')
   has_makerom = bin_is_available('makerom')
 
-  if not (has_bannertool and has_3dstool and has_sed and has_makerom):
-    report_missing_prerequisites(has_bannertool, has_3dstool, has_sed, has_makerom)
+  if not (has_bannertool and has_3dstool and has_makerom):
+    report_missing_prerequisites(has_bannertool, has_3dstool, has_makerom)
     # Script has already exited here.
     return False
   return True
@@ -482,12 +487,11 @@ def report_no_info(game_path, game_dir=None, valid_id_length=None, valid_id=None
   missing = [a for a in missing if a]
   _report_warning('gameinfo.cfg file is invalid or missing information: {}: {}'.format(', '.join(missing), dir))
 
-def report_missing_prerequisites(has_bannertool, has_3dstool, has_sed, has_makerom):
+def report_missing_prerequisites(has_bannertool, has_3dstool, has_makerom):
   missing = [
     'bannertool' if not has_bannertool else '',
     '3dstool' if not has_3dstool else '',
-    'makerom' if not has_makerom else '',
-    'sed' if not has_sed else ''
+    'makerom' if not has_makerom else ''
   ]
   missing = [a for a in missing if a]
   _report_error('missing prerequisite{}: {}'.format('' if len(missing) == 1 else 's', ', '.join(missing)))
