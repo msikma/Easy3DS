@@ -1,7 +1,6 @@
 # EasyRPG
 assets/easyrpg-player.elf
-assets/RTP2000
-assets/RTP2003
+assets/rtp/**
 
 # Games and CIAs
 games/**
