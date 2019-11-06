@@ -8,7 +8,7 @@ The easiest way to play an RPG Maker game on the 3DS is to install a CIA file (w
 
 To run this script, the following dependencies are needed:
 
-* [an EasyRPG build for 3DS (ELF file)](https://ci.easyrpg.org/job/player-3ds/)
+* [an EasyRPG build for 3DS (ELF file)](https://ci.easyrpg.org/job/player-3ds/lastBuild/)
 * [`bannertool`](https://github.com/Steveice10/bannertool/releases)
 * [`3dstool`](https://github.com/dnasdw/3dstool/releases)
 * [`makerom`](https://github.com/profi200/Project_CTR/releases)
