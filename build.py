@@ -9,6 +9,7 @@ import subprocess
 import sys
 import unicodedata
 import zlib
+import configparser
 from distutils.dir_util import copy_tree
 from distutils.spawn import find_executable
 from glob import glob
@@ -28,17 +29,23 @@ RTP_VERSIONS = {
 }
 
 
-def make_cia_file(id, title, author, release_date, game_path, name, safe_name, banner, audio, icon, elf, spec, tmp, out, rel_dir):
+def make_cia_file(id, title, author, release_date, game_path, name, safe_name, banner, audio, icon, elf, spec, tmp, out, rel_dir, verbose_mode=False):
   '''
   Actually builds the CIA file. This procedure creates temporary files that aren't cleaned up here.
   '''
   success = True
-  
-  result = subprocess.run(['bannertool', 'makebanner', '-i', banner, '-a', audio, '-o', tmp + '/banner.bin'], capture_output=True)
+
+  cmd = ['bannertool', 'makebanner', '-i', banner, '-a', audio, '-o', tmp + '/banner.bin']
+  print_verbose(' '.join(cmd), verbose=verbose_mode)
+  result = subprocess.run(cmd, capture_output=True)
   if result.returncode != 0: return report_cia_error(1, 'makebanner', rel_dir)
-  result = subprocess.run(['bannertool', 'makesmdh', '-s', title, '-l', title, '-p', author, '-i', icon, '-o', tmp + '/icon.bin'], capture_output=True)
+  cmd = ['bannertool', 'makesmdh', '-s', title, '-l', title, '-p', author, '-i', icon, '-o', tmp + '/icon.bin']
+  print_verbose(' '.join(cmd), verbose=verbose_mode)
+  result = subprocess.run(cmd, capture_output=True)
   if result.returncode != 0: return report_cia_error(2, 'makesmdh', rel_dir)
-  result = subprocess.run(['3dstool', '-cvtf', 'romfs', tmp + '/romfs.bin', '--romfs-dir', game_path], capture_output=True)
+  cmd = ['3dstool', '-cvtf', 'romfs', tmp + '/romfs.bin', '--romfs-dir', game_path]
+  print_verbose(' '.join(cmd), verbose=verbose_mode)
+  result = subprocess.run(cmd, capture_output=True)
   if result.returncode != 0: return report_cia_error(3, '3dstool', rel_dir)
 
   try:
@@ -48,8 +55,10 @@ def make_cia_file(id, title, author, release_date, game_path, name, safe_name, b
       fp.write(spec_txt.replace('{{UNIQUE_ID}}', id))
   except:
     return report_cia_error(4, 'rsf', rel_dir)
-  
-  result = subprocess.run(['makerom', '-f', 'cia', '-o', out + '/' + safe_name + '.cia', '-elf', elf, '-rsf', tmp + '/spec.rsf', '-icon', tmp + '/icon.bin', '-banner', tmp + '/banner.bin', '-exefslogo', '-target', 't', '-romfs', tmp + '/romfs.bin'], capture_output=True)
+
+  cmd = ['makerom', '-f', 'cia', '-o', out + '/' + safe_name + '.cia', '-elf', elf, '-rsf', tmp + '/spec.rsf', '-icon', tmp + '/icon.bin', '-banner', tmp + '/banner.bin', '-exefslogo', '-target', 't', '-romfs', tmp + '/romfs.bin']
+  print_verbose(' '.join(cmd), verbose=verbose_mode)
+  result = subprocess.run(cmd, capture_output=True)
   if result.returncode != 0: return report_cia_error(5, 'makerom', rel_dir)
 
   return {
@@ -75,7 +84,7 @@ def clean_up_tmp_files(tmp_dir):
       os.remove(file)
 
 
-def build_cia(base, game_path, game_name, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, default_crcs, game_dir=None):
+def build_cia(base, game_path, game_name, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, default_crcs, game_dir=None, verbose_mode=False):
   '''
   Prepares to build a CIA file by assembling all the information needed.
   '''
@@ -131,12 +140,12 @@ def build_cia(base, game_path, game_name, elf_path, rtp_dirs, no_rtp, spec_path,
     try:
       # Make a temp dir, then copy over the RTP and finally the game.
       game_tmp_dir = make_game_tmp(safe_name, tmp_dir)
-      copy_rtp_to_tmp(game_tmp_dir, wanted_rtp, rtp_dirs)
-      copy_game_to_tmp(game_tmp_dir, game_path)
+      copy_rtp_to_tmp(game_tmp_dir, wanted_rtp, rtp_dirs, verbose_mode)
+      copy_game_to_tmp(game_tmp_dir, game_path, verbose_mode)
 
       # Author is optional.
       author = info.get('author').strip()
-      
+
       # Use this to make the CIA file.
       game = make_cia_file(
         info.get('cia_id').strip(),
@@ -153,7 +162,8 @@ def build_cia(base, game_path, game_name, elf_path, rtp_dirs, no_rtp, spec_path,
         spec_path,
         tmp_dir,
         out_dir,
-        rel_dir(game_path, game_dir)
+        rel_dir(game_path, game_dir),
+        verbose_mode
       )
       success = game['success']
     except:
@@ -179,6 +189,8 @@ def main():
   parser = argparse.ArgumentParser(description='Script for generating 3DS CIA files from RPG Maker 2000 games using EasyRPG. See readme.md for setting up the build requirements. Only the source directory needs to be specified; defaults will be used for everything else.')
 
   parser.add_argument('dir', type=str, help='source dir containing an RM2K(3) game, or multiple games')
+  parser.add_argument('-v', '--version', action='version', version=get_program_version())
+  parser.add_argument('-V', '--verbose', action='store_true', help='enables verbose output of intermediate steps')
   parser.add_argument('--elf', type=str, help='path to an EasyRPG ELF file', default='./assets/easyrpg-player.elf')
   parser.add_argument('--spec', type=str, help='path to a ROM spec file (will get a new unique ID)', default='./assets/spec.rsf')
   parser.add_argument('--rtp', type=str, help='path to the directory containing RTPs', default='./assets/rtp')
@@ -188,17 +200,18 @@ def main():
   base = os.path.abspath(os.path.dirname(sys.argv[0]))
   tmp_dir = base + '/tmp'
 
+  # TODO: add verbose logging to these sections.
   rtp = check_rtp(args.rtp)
   check_rsf_template(args.spec)
   check_prerequisites()
   check_easyrpg_elf(args.elf)
   clean_up_tmp_files(tmp_dir)
 
-  build_dir(base, args.dir, args.elf, rtp, args.no_rtp, args.spec, args.out, tmp_dir)
+  build_dir(base, args.dir, args.elf, rtp, args.no_rtp, args.spec, args.out, tmp_dir, args.verbose)
   sys.exit(0)
 
 
-def build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, report_dir=False):
+def build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, report_dir=False, verbose_mode=False):
   '''
   Builds a single game.
   '''
@@ -226,7 +239,7 @@ def build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, 
     return
   if not check_3ds_info(game_path, game_dir):
     return
-  result = build_cia(base, game_path, item, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, defaults, game_dir)
+  result = build_cia(base, game_path, item, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, defaults, game_dir, verbose_mode)
   if not result['success']:
     if result.get('skip'):
       return result
@@ -235,7 +248,7 @@ def build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, 
     report_build_succeeded(result)
   return result
 
-def build_dir(base, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir):
+def build_dir(base, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, verbose_mode):
   '''
   Builds either a single game or multiple games.
   '''
@@ -243,7 +256,7 @@ def build_dir(base, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tm
   if is_game(game_dir):
     bits = os.path.split(game_dir)
     item = bits[1]
-    result = build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, True)
+    result = build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, True, verbose_mode)
     if result and result['success']:
       return
     else:
@@ -251,7 +264,7 @@ def build_dir(base, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tm
 
   count = 0
   for item in os.listdir(game_dir):
-    result = build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, False)
+    result = build(base, item, game_dir, elf_path, rtp_dirs, no_rtp, spec_path, out_dir, tmp_dir, False, verbose_mode)
     if result and result['success']:
       count += 1
 
@@ -263,15 +276,17 @@ def make_game_tmp(name, tmp_dir):
   return tmp
 
 
-def copy_rtp_to_tmp(tmp_path, wanted_rtp, rtp_dirs):
+def copy_rtp_to_tmp(tmp_path, wanted_rtp, rtp_dirs, verbose_mode=False):
   '''Copies an RTP to the temp directory.'''
   rtp_path = rtp_dirs.get(wanted_rtp)
   if rtp_path:
+    print_verbose('Copy RTP to tmp', rtp_path, tmp_path, verbose=verbose_mode)
     copy_tree(rtp_path, tmp_path)
 
 
-def copy_game_to_tmp(tmp_path, game_path):
+def copy_game_to_tmp(tmp_path, game_path, verbose_mode=False):
   '''Copies a game to the temp directory.'''
+  print_verbose('Copy game to tmp', game_path, tmp_path, verbose=verbose_mode)
   copy_tree(game_path, tmp_path)
 
 
@@ -348,16 +363,16 @@ def check_rtp(rtp):
   if not has_rtp_dir:
     _report_warning('could not find RTP directory: {}'.format(rtp))
     return
-  
+
   rtps = {}
   for item in os.listdir(rtp):
     path = rtp + '/' + item
     if os.path.isdir(path):
       rtps[item] = path
-  
+
   if len(rtps.keys()) == 0:
     _report_warning('could not find any RTPs: {}'.format(rtp))
-  
+
   return rtps
 
 
@@ -406,7 +421,7 @@ def get_rm_version(game_path):
     # If we don't have an executable file at all, just pretend it's 2003.
     # 2003 is the more compatible RTP since it works for both 2000 and 2003 games.
     return 2003
-  
+
   # Note: this is not very accurate.
   # 2000 executables tend to be around 730 KB, and 2003 executables around 950 KB.
   size = os.path.getsize(exe)
@@ -425,14 +440,14 @@ def get_rtp_fallback(rtps, wanted_rtp, game_path):
     wanted = '2000-en'
   if wanted_rtp.startswith('2003-en'):
     wanted = '2003-en'
-  
+
   if not wanted:
     rm = get_rm_version(game_path)
     if rm == 2000:
       wanted = '2000-en'
     else:
       wanted = '2003-en'
-  
+
   if wanted == '2000-en':
     if rtps.get('2000-en-don-miguel'): return '2000-en-don-miguel'
     if rtps.get('2000-en-official'): return '2000-en-official'
@@ -440,8 +455,23 @@ def get_rtp_fallback(rtps, wanted_rtp, game_path):
     if rtps.get('2003-en-rpg-advocate'): return '2003-en-rpg-advocate'
     if rtps.get('2003-en-maker-universe'): return '2003-en-maker-universe'
     if rtps.get('2003-en-official'): return '2003-en-official'
-  
+
   return False
+
+
+def get_program_version():
+  parser = configparser.ConfigParser()
+  parser.read('./setup.cfg')
+  meta = parser['metadata']
+  return meta['name'] + '-' + meta['version']
+
+
+def print_verbose(*args, verbose=False):
+  '''
+  Prints debugging information, if verbose mode is turned on.
+  '''
+  if not verbose: return
+  print(*args)
 
 
 def report_rtp_needed(wanted_rtp, game_path, game_dir=None):
