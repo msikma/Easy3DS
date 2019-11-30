@@ -5,6 +5,7 @@ assets/rtp/**
 # Games and CIAs
 games/**
 out/*
+tmp/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
