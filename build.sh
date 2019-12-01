@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Abort on error
+# Abort on error.
 set -e
 
 # Get the project's root directory, possibly through a symlink. <https://stackoverflow.com/a/246128>
@@ -19,13 +19,17 @@ path_easyrpg_bin="$BASE/assets/easyrpg-player.elf"
 
 # Checks whether the required tools are installed.
 function check_prerequisites {
-  arr=('bannertool' '3dstool' 'makerom')
+  arr=('bannertool' '3dstool' 'makerom' 'sed')
   for tool in "${arr[@]}"; do
     if ! command -v $tool >/dev/null 2>&1; then
       echo "$SELF: error: the '$tool' command is not available (see readme for a list of prerequisites)"
       exit
     fi
   done
+  if [ -z "$BASE" ]; then
+    echo "$SELF: error: base dir is not set"
+    exit
+  fi
 }
 
 # Retrieves the value of a specific key from a game's gameinfo.cfg file.
@@ -48,17 +52,18 @@ function make_cia {
   local cia_output="$dir_output/$slug.cia"
 
   if [ "$unique_id" = "000000" ]; then
-    echo "Skipping game: \"$slug\": set a unique ID"
+    echo "Skipping game: '$slug': set a unique ID"
     return
   fi
   if [ -z "$title" ] || [ -z "$author" ] || [ -z "$unique_id" ]; then
-    echo "Skipping game: \"$slug\": gameinfo.cfg file is incomplete (see readme)"
+    echo "Skipping game: '$slug': gameinfo.cfg file is incomplete (see readme)"
     return
   fi
 
-  echo "Building game: \"$slug\" (title=\"$title\", author=\"$author\", release=\"$release\", id=\"$unique_id\")"
+  echo "Building game: '$slug' (title='$title', author='$author', release='$release', id='$unique_id')"
   
   mkdir -p "$dir_tmp"
+  rm -f "$dir_tmp/"*
   bannertool makebanner -i "$dir_assets_game/banner.png" -a "$dir_assets_game/audio.wav" -o "$dir_tmp/banner.bin" > /dev/null
   bannertool makesmdh -s "$title" -l "$title" -p "$author" -i "$dir_assets_game/icon.png" -o "$dir_tmp/icon.bin" > /dev/null
   3dstool -ctf romfs "$dir_tmp/romfs.bin" --romfs-dir "$dir_romfs"
@@ -139,7 +144,7 @@ EOF
       if [ ! -z "$1" ]; then
         cat << EOF
 $usage
-$SELF: error: Invalid command: $1 (choose from [cia, cia-dir])
+$SELF: error: invalid command: $1 (choose from [cia, cia-dir])
 EOF
         exit 1
       fi
